@@ -1,0 +1,46 @@
+#!/bin/bash
+exec > >(tee /var/log/user-data.log) 2>&1
+
+echo "=== STARTING USER DATA SCRIPT ==="
+yum update -y
+amazon-linux-extras enable php7.4
+yum install -y php php-mysqlnd php-redis httpd mariadb wget unzip curl
+
+systemctl enable httpd
+systemctl start httpd
+
+echo "WORDPRESS_DB_HOST=${db_host}" >> /etc/environment
+echo "WORDPRESS_DB_USER=${db_user}" >> /etc/environment
+echo "WORDPRESS_DB_PASSWORD=${db_password}" >> /etc/environment
+echo "WORDPRESS_DB_NAME=wordpressdb" >> /etc/environment
+echo "WORDPRESS_REDIS_HOST=${redis_host}" >> /etc/environment
+
+cd /tmp
+curl -O https://wordpress.org/latest.tar.gz
+tar -xzf latest.tar.gz
+rsync -av wordpress/ /var/www/html/
+chown -R apache:apache /var/www/html
+chmod -R 755 /var/www/html
+
+cat > /var/www/html/wp-config.php <<EOF
+<?php
+define('DB_NAME', getenv('WORDPRESS_DB_NAME'));
+define('DB_USER', getenv('WORDPRESS_DB_USER'));
+define('DB_PASSWORD', getenv('WORDPRESS_DB_PASSWORD'));
+define('DB_HOST', getenv('WORDPRESS_DB_HOST'));
+
+define('WP_REDIS_HOST', getenv('WORDPRESS_REDIS_HOST'));
+define('WP_REDIS_PORT', 6379);
+define('WP_REDIS_CLIENT', 'phpredis');
+
+define('WP_CACHE', true);
+define('WP_DEBUG', false);
+
+\$table_prefix = 'wp_';
+
+if ( !defined('ABSPATH') )
+    define('ABSPATH', dirname(__FILE__) . '/');
+require_once ABSPATH . 'wp-settings.php';
+EOF
+
+echo "=== SCRIPT COMPLETED ==="
